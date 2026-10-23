@@ -669,6 +669,22 @@ async function sbFinish(s,fallbackName){/* make (or update) the local profile th
   if(!u){u={id:s.uid,name,salt:'',pin:null,cloud:true,email:s.email};us.push(u)}else{u.cloud=true;u.email=s.email;if(s.name)u.name=s.name}ASAVE(us);
   try{const r=await sbPull(s.uid);if(!r&&AUSERS().length===1&&typeof _aLegacyKeys==='function'){_aLegacyKeys().forEach(k=>{const v=_lsG(k);if(v!=null)_lsS(k+'~'+s.uid,v)})}if(r){Object.keys(r.data||{}).filter(k=>/^mllab/.test(k)).forEach(k=>_lsS(k+'~'+s.uid,r.data[k]));_lsS('mllab_ts~'+s.uid,r.updated_at)}}catch(e){}
   aLogin(s.uid)}
+/* ===== links from emails: confirm sign-up, reset password, expired link ===== */
+const _RH=(()=>{try{const h=location.hash.slice(1);if(!/access_token=|error_code=|error=/.test(h))return null;const p=new URLSearchParams(h);const o={type:p.get('type'),tok:p.get('access_token'),refresh:p.get('refresh_token'),exp:+p.get('expires_in')||3600,err:p.get('error_code')||p.get('error'),desc:p.get('error_description')};history.replaceState(null,'',location.pathname+location.search);return o}catch(e){return null}})();
+async function sbSessFromHash(){const u=await sbCall('/auth/v1/user',{headers:{Authorization:'Bearer '+_RH.tok}});return{access:_RH.tok,refresh:_RH.refresh,exp:Date.now()+(_RH.exp-60)*1000,uid:u.id,email:u.email,name:(u.user_metadata||{}).name||''}}
+function showEmailLink(){
+  const app=document.getElementById('app');app.innerHTML='';const w=el('div',{class:'wrap loginwrap'}),card=el('div',{class:'logincard'}),msg=el('p',{class:'loginmsg',role:'status'});
+  card.append(el('div',{class:'loginlogo',html:(typeof boltSVG==='function'?boltSVG():'')}),el('h1',{class:'logint'},'ML Lab'));w.append(card);app.append(w);
+  const toLogin=()=>{location.reload()};
+  if(_RH.err||!_RH.tok){card.append(el('p',{class:'loginsub'},'That email link has expired or was already used. This is normal if you clicked it twice, or if your email app opened it first.'),el('p',{class:'loginsub'},'If you just made your account, it may already be confirmed. Try signing in. If you forgot your password, ask for a new reset link on the sign-in page.'),el('div',{class:'row',style:'justify-content:center'},btn('Go to sign in',toLogin,'primary')));return}
+  if(_RH.type==='recovery'){card.append(el('p',{class:'loginsub'},'Choose a new password.'));
+    const p1=el('input',{type:'password',autocomplete:'new-password',class:'logininp','aria-label':'New password',placeholder:'New password (6 or more characters)'}),p2=el('input',{type:'password',autocomplete:'new-password',class:'logininp','aria-label':'Repeat the new password',placeholder:'Repeat the new password'});
+    const go=async()=>{msg.style.color='';if(p1.value.length<6){msg.textContent='Use at least 6 characters.';return}if(p1.value!==p2.value){msg.textContent='The two passwords do not match.';return}msg.style.color='var(--muted)';msg.textContent='One moment...';
+      try{await sbCall('/auth/v1/user',{method:'PUT',headers:{Authorization:'Bearer '+_RH.tok},body:{password:p1.value}});const s=await sbSessFromHash();await sbFinish(s)}catch(e){msg.style.color='';msg.textContent=(e.message||'Something went wrong.')}};
+    [p1,p2].forEach(i=>i.addEventListener('keydown',ev=>{if(ev.key==='Enter')go()}));
+    card.append(el('div',{class:'loginlist'},p1,p2,el('div',{class:'row',style:'margin-top:12px'},btn('Save new password',go,'primary'))),msg);setTimeout(()=>p1.focus(),50);return}
+  card.append(el('p',{class:'loginsub'},'Email confirmed. Signing you in...'));
+  sbSessFromHash().then(s=>sbFinish(s)).catch(()=>{card.append(el('p',{class:'loginmsg'},'Confirmed, but sign-in did not finish. Please sign in with your password.'),btn('Go to sign in',toLogin,'primary'))})}
 
 /* ============ curriculum: tiers, order, prerequisites ============ */
 const CURR=[
@@ -6596,7 +6612,7 @@ function route(){if(!CU)return;
 addEventListener('hashchange',route);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>route());
 new MutationObserver(()=>route()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-if(CU){route();sbBoot()}else showLogin();
+if(_RH)showEmailLink();else if(CU){route();sbBoot()}else showLogin();
 
 </script>
 </html>
